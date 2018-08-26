@@ -1,0 +1,91 @@
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+
+public class Letsgo {
+    public static void main(String[] args) {
+        long startTime = System.nanoTime();
+        try{
+            Class.forName("com.mysql.cj.jdbc.Driver");
+            String ligue = "e1";
+            Connection con= DriverManager.getConnection(
+                    "jdbc:mysql://localhost:3306/football","root","");
+            Statement stmt=con.createStatement();
+            ResultSet rs=stmt.executeQuery("select * from "+ligue+" group by HomeTeam");
+            List<String> teamList = new ArrayList<>();
+            List<Duo> teamDuoList = new ArrayList<>();
+            List<String[]> listeComboEquipe = new ArrayList<>();
+            while(rs.next()) {
+                teamList.add(escape(rs.getString(4)));
+            }
+
+            for(String team : teamList){
+                for(String team2 : teamList){
+                    if(!team2.equals(team)){
+                        List<String> comboEquipe = Arrays.asList(team, team2);
+                        if(isNewComboEquipe(comboEquipe, listeComboEquipe)) {
+                            ResultSet rs2 = stmt.executeQuery("SELECT count(Journee) from\n" +
+                                    "(SELECT Journee, count(Journee) > 1 as Duo FROM football." + ligue + " WHERE\n" +
+                                    "((HomeTeam='" + team + "' and FTR='H' or AwayTeam='" + team + "' and FTR='A')\n" +
+                                    "OR\n" +
+                                    "(HomeTeam='" + team2 + "' and FTR='H' or AwayTeam='" + team2 + "' and FTR='A')\n" +
+                                    ") group by Journee order by Duo desc) as WinningJournee \n" +
+                                    "where Duo=1;");
+                            while (rs2.next()) {
+                                Double matchWonTogether = Double.valueOf(rs2.getInt(1));
+                                Double perc = matchWonTogether / ((ligue.equals("d1") ? 34 : 38)) * 100;
+                                if (!perc.equals(new Double(0))) {
+                                    teamDuoList.add(new Duo(team, team2, perc));
+                                }
+                            }
+                            listeComboEquipe.add(new String[]{team, team2});
+                        }
+                    }
+                }
+            }
+            con.close();
+
+            teamDuoList.sort(new Comparator<Duo>() {
+                @Override
+                public int compare(Duo team, Duo team2) {
+                    return Double.compare(team2.getWinPercentage(), team.getWinPercentage());
+                }
+            });
+
+            for(int i = 0; i < 5;i++){
+                System.out.println(teamDuoList.get(i).getTeam1()+" / "+teamDuoList.get(i).getTeam2()+" / "+teamDuoList.get(i).getWinPercentage());
+            }
+        }catch(Exception e){
+            System.out.println(e);
+        }
+
+        long endTime = System.nanoTime();
+
+        long duration = (endTime - startTime);
+        System.out.println(duration/1000000 + " ms");
+    }
+
+    private static String escape(String equipe){
+        return equipe.replace("'", "\\'");
+    }
+
+    private static Boolean isNewComboEquipe(List<String> comboEquipe, List<String[]> listeComboEquipe){
+        Boolean isNew = true;
+        for(String[] comboExistant : listeComboEquipe){
+            Integer matchFound = 0;
+            for(String s : comboExistant){
+                if(!comboEquipe.contains(s)){
+                    break;
+                }
+                matchFound++;
+            }
+            if(matchFound==3)return false;
+        }
+        return isNew;
+    }
+}
